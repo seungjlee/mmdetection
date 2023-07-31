@@ -588,7 +588,7 @@ class CocoMetric(BaseMetric):
                 scores.append(coco_summarize(coco_eval, 1, 0.7, maxDets=coco_eval.params.maxDets[2]))
                 logger.info(f'\033[95m{metric}_copypaste:\033[0m\n'
                             f'{",".join(metric_items)}\n'
-                            f'{str(str(np.array(scores)).replace(" ", ","))[1:-1]}')
+                            f'{str(str(np.array(scores) * 100).replace(" ", ","))[1:-1]}')
 
         if tmp_dir is not None:
             tmp_dir.cleanup()
