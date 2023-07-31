@@ -504,7 +504,7 @@ class CocoMetric(BaseMetric):
 
                 for item in metric_items:
                     val = float(
-                        f'{coco_eval.stats[coco_metric_names[item]]:.3f}')
+                        f'{coco_eval.stats[coco_metric_names[item]]:.5f}')
                     eval_results[item] = val
             else:
                 coco_eval.evaluate()
@@ -572,19 +572,59 @@ class CocoMetric(BaseMetric):
 
                 if metric_items is None:
                     metric_items = [
-                        'mAP', 'mAP_50', 'mAP_75', 'mAP_s', 'mAP_m', 'mAP_l'
+                        'mAP', 'mAP_50', 'mAP_75', 'mAP_s', 'mAP_m', 'mAP_l',
+                        'AR@1000', 'AR_s@1000', 'AR_m@1000', 'AR_l@1000',
                     ]
 
                 for metric_item in metric_items:
                     key = f'{metric}_{metric_item}'
                     val = coco_eval.stats[coco_metric_names[metric_item]]
-                    eval_results[key] = float(f'{round(val, 3)}')
+                    eval_results[key] = float(f'{round(val, 5)}')
 
-                ap = coco_eval.stats[:6]
-                logger.info(f'{metric}_mAP_copypaste: {ap[0]:.3f} '
-                            f'{ap[1]:.3f} {ap[2]:.3f} {ap[3]:.3f} '
-                            f'{ap[4]:.3f} {ap[5]:.3f}')
+                np.set_printoptions(floatmode="fixed", precision=5, linewidth=160)
+                scores = [coco_eval.stats[coco_metric_names[x]] for x in metric_items]
+                metric_items += ['mAP_60', 'mAP_70']
+                scores.append(coco_summarize(coco_eval, 1, 0.6, maxDets=coco_eval.params.maxDets[2]))
+                scores.append(coco_summarize(coco_eval, 1, 0.7, maxDets=coco_eval.params.maxDets[2]))
+                logger.info(f'\033[95m{metric}_copypaste:\033[0m\n'
+                            f'{",".join(metric_items)}\n'
+                            f'{str(str(np.array(scores)).replace(" ", ","))[1:-1]}')
 
         if tmp_dir is not None:
             tmp_dir.cleanup()
         return eval_results
+
+def coco_summarize(coco_eval, ap=1, iouThr=None, areaRng='all', maxDets=100 ):
+    """
+    coco_summarize
+    """
+    params = coco_eval.params
+    iStr = ' {:<18} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} ] = {:0.3f}'
+    titleStr = 'Average Precision' if ap == 1 else 'Average Recall'
+    typeStr = '(AP)' if ap==1 else '(AR)'
+    iouStr = '{:0.2f}:{:0.2f}'.format(params.iouThrs[0], params.iouThrs[-1]) \
+        if iouThr is None else '{:0.2f}'.format(iouThr)
+
+    aind = [i for i, aRng in enumerate(params.areaRngLbl) if aRng == areaRng]
+    mind = [i for i, mDet in enumerate(params.maxDets) if mDet == maxDets]
+    if ap == 1:
+        # dimension of precision: [TxRxKxAxM]
+        s = coco_eval.eval['precision']
+        # IoU
+        if iouThr is not None:
+            t = np.where(iouThr == params.iouThrs)[0]
+            s = s[t]
+        s = s[:,:,:,aind,mind]
+    else:
+        # dimension of recall: [TxKxAxM]
+        s = coco_eval.eval['recall']
+        if iouThr is not None:
+            t = np.where(iouThr == params.iouThrs)[0]
+            s = s[t]
+        s = s[:,:,aind,mind]
+    if len(s[s>-1])==0:
+        mean_s = -1
+    else:
+        mean_s = np.mean(s[s>-1])
+    print(iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s))
+    return mean_s
